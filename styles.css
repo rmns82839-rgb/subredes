@@ -1,0 +1,423 @@
+/* ======================================= */
+/* 1. VARIABLES Y ESTILOS BASE (CLARO Y LIMPIO) */
+/* ======================================= */
+
+:root {
+    --color-bg-light: #ffffff;
+    --color-bg-card: #f8f8f8;
+    --color-primary: #1e88e5; /* Azul brillante y profesional */
+    --color-secondary: #ff7043; /* Naranja/Coral para énfasis y acción */
+    --color-text: #333333;
+    --color-border: #e0e0e0;
+    --color-success: #28a745; /* Verde para el botón de PDF */
+    --font-mono: 'Roboto Mono', monospace;
+    --font-sans: 'Roboto', sans-serif;
+}
+
+body {
+    background-color: var(--color-border);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    line-height: 1.6;
+    padding: 10px;
+    margin: 0;
+}
+
+.container {
+    max-width: 960px;
+    margin: 20px auto;
+    padding: 20px;
+    background-color: var(--color-bg-light);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Contenedor del Título y Botón de Enlace */
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap; /* Permite que el botón se mueva debajo en móvil */
+    margin-bottom: 20px;
+    border-bottom: 3px solid var(--color-primary);
+    padding-bottom: 12px;
+}
+
+/* Títulos */
+h1 {
+    font-family: var(--font-sans);
+    color: var(--color-primary);
+    text-align: left; /* Alineación a la izquierda para acomodar el botón */
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin: 0; /* Eliminar margen del h1 para control con .app-header */
+    font-size: 1.8rem;
+}
+
+h2 {
+    color: var(--color-primary);
+    border-left: 5px solid var(--color-secondary);
+    padding-left: 12px;
+    margin-top: 35px;
+    margin-bottom: 15px;
+    font-weight: 700;
+    font-size: 1.4rem;
+}
+
+h3 {
+    color: var(--color-text);
+    margin-top: 25px;
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: 5px;
+    font-weight: 500;
+}
+
+/* ======================================= */
+/* 2. FORMULARIOS Y RESPONSIVIDAD */
+/* ======================================= */
+
+.form-group, .calc-mode-selector, .card-section {
+    margin-bottom: 20px;
+}
+
+label {
+    display: block;
+    margin-top: 15px;
+    font-weight: 600;
+}
+
+input[type="text"], input[type="number"] {
+    width: 100%;
+    box-sizing: border-box; 
+    padding: 10px;
+    margin-top: 5px;
+    background-color: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+}
+
+input[type="text"]:focus, input[type="number"]:focus {
+    border-color: var(--color-primary);
+    outline: none;
+    box-shadow: 0 0 5px rgba(30, 136, 229, 0.3);
+}
+
+.radio-group label {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 25px;
+    font-weight: 400;
+    cursor: pointer;
+}
+
+/* Ocultar sección VLSM/CLSM inicialmente */
+.hidden {
+    display: none !important;
+}
+
+/* Grupos de entrada VLSM */
+.vlsm-input-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.vlsm-input-group input {
+    flex-grow: 1;
+    margin: 0;
+}
+
+.remove-host-btn, .add-host-btn {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.3s;
+}
+
+.add-host-btn {
+    display: block;
+    width: 100%;
+    background-color: #6c757d;
+    margin-top: 10px;
+}
+
+.remove-host-btn:hover { background-color: #c82333; }
+.add-host-btn:hover { background-color: #5a6268; }
+
+/* Botón de Cálculo Principal */
+.action-buttons > button {
+    background-color: var(--color-secondary);
+    color: var(--color-bg-light);
+    padding: 12px 25px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1.05em;
+    font-weight: 600;
+    margin-top: 10px;
+    width: 100%; 
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: background-color 0.3s;
+}
+
+.action-buttons > button:hover {
+    background-color: #ff9147;
+}
+
+/* Sección PDF/Imprimir */
+.pdf-print-section {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid var(--color-border);
+}
+
+.pdf-print-section label {
+    margin-top: 0;
+}
+
+.print-pdf-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background-color: var(--color-success); /* Verde para Imprimir/PDF */
+    color: var(--color-bg-light);
+    padding: 12px 25px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1em;
+    font-weight: 600;
+    margin-top: 15px;
+    width: 100%;
+    transition: background-color 0.3s;
+}
+
+.print-pdf-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
+.print-pdf-btn:hover {
+    background-color: #1e7e34;
+}
+
+/* Estilos para el botón de ENLACE EXTERNO (Ajustado para mejor posicionamiento) */
+.external-link-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    /* Eliminamos position: absolute; para que Flexbox lo controle */
+    background-color: #6a1b9a; /* Morado distintivo */
+    color: white;
+    padding: 8px 15px;
+    border-radius: 50px;
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    transition: background-color 0.3s, transform 0.1s;
+    z-index: 10;
+    /* Ajuste de margen para separarlo del título */
+    margin-left: 20px; 
+}
+
+.external-link-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.external-link-btn:hover {
+    background-color: #8e24aa;
+    transform: translateY(-1px);
+}
+
+/* ======================================= */
+/* 3. CONTENEDOR DE RESULTADOS */
+/* ======================================= */
+
+#results-container {
+    margin-top: 40px;
+    padding: 25px;
+    background-color: var(--color-bg-card);
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+    overflow-x: auto;
+    font-family: var(--font-mono);
+}
+
+#results-container p {
+    font-family: var(--font-mono);
+    margin: 8px 0;
+    white-space: pre-wrap;
+    color: var(--color-text);
+    font-size: 0.95rem;
+}
+
+#results-container strong {
+    color: var(--color-secondary);
+    font-weight: 700;
+}
+
+/* Estilo para la visualización binaria */
+#results-container .binary-viz-container {
+    font-size: 16px;
+    padding: 15px;
+    border: 1px solid #c5c5c5;
+    background-color: #f0f0f0;
+    border-radius: 5px;
+    margin: 15px 0;
+}
+
+/* ======================================= */
+/* 4. TABLAS Y MEDIA QUERIES */
+/* ======================================= */
+
+.subnet-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    font-size: 0.85em; 
+    font-family: var(--font-mono);
+    min-width: 600px; 
+}
+
+.subnet-table th, .subnet-table td {
+    padding: 10px 5px;
+    text-align: center;
+    border: 1px solid var(--color-border);
+}
+
+.subnet-table thead th {
+    background-color: var(--color-primary);
+    color: var(--color-bg-light);
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.subnet-table tbody tr:nth-child(even) {
+    background-color: #f2f2f2;
+}
+
+.subnet-table tbody tr:hover {
+    background-color: #e8e8e8;
+    color: var(--color-primary);
+}
+
+/* Media Query para móvil (máximo 600px) */
+@media (max-width: 600px) {
+    body {
+        padding: 0;
+    }
+    
+    .container {
+        margin: 0;
+        border-radius: 0;
+        box-shadow: none;
+        padding: 15px;
+    }
+    
+    /* El header ahora es vertical en móvil */
+    .app-header {
+        flex-direction: column;
+        align-items: flex-start;
+        text-align: center;
+        margin-bottom: 25px;
+    }
+
+    h1 {
+        font-size: 1.5rem;
+        width: 100%; /* El título ocupa todo el ancho */
+        text-align: center;
+    }
+
+    /* El botón de enlace externo ahora está centrado debajo del título */
+    .external-link-btn {
+        position: static;
+        width: 100%;
+        margin: 15px 0 0 0; /* Centrado y con margen superior */
+        justify-content: center;
+        font-size: 1rem;
+    }
+    
+    .radio-group label {
+        display: block;
+        margin-right: 0;
+        margin-bottom: 5px;
+    }
+
+    .vlsm-input-group {
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .remove-host-btn {
+        width: 100%;
+        padding: 8px;
+    }
+
+    /* Scroll horizontal para tablas grandes en pantallas pequeñas */
+    #results-container {
+        padding: 10px;
+    }
+    
+    /* Envuelve la tabla para permitir el scroll horizontal */
+    .subnet-table-wrapper {
+        overflow-x: auto;
+    }
+    
+    .subnet-table {
+        font-size: 0.8em;
+    }
+}
+
+
+/* Estilos de impresión (Para el PDF) */
+@media print {
+    body {
+        background: none !important;
+        padding: 0;
+        color: #000;
+    }
+    
+    /* Ocultar elementos irrelevantes en la impresión */
+    .container, .external-link-btn, .action-buttons, .form-group, .calc-mode-selector {
+        display: none !important;
+    }
+    
+    #print-output {
+        display: block !important;
+        margin: 0;
+        padding: 0;
+    }
+
+    h1 {
+        color: #333 !important;
+        border-bottom: 2px solid #333 !important;
+    }
+
+    .subnet-table {
+        font-size: 10pt;
+        min-width: 100%;
+    }
+
+    .subnet-table th {
+        background-color: #e0e0e0 !important;
+        color: #333 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    #results-container {
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0;
+        background-color: white !important;
+    }
+}

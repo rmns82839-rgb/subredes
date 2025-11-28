@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Subnetting IP</title>
+    <!-- Incluir fuentes de Google para un look moderno y limpio -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;600;700&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Vinculación del archivo CSS -->
+    <link rel="stylesheet" href="styles.css">
+    <script>
+        // Función placeholder para evitar errores si MathJax no está disponible
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']]
+            },
+            svg: {
+                fontCache: 'global'
+            }
+        };
+    </script>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <!-- Carga de MathJax (necesaria para manejar las ecuaciones) -->
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body>
+
+    <div class="container">
+        
+        <header class="app-header">
+             <h1>Calculadora de Subnetting IP</h1>
+
+             <!-- BOTÓN DE ENLACE EXTERNO: Ahora está dentro del contenedor 'app-header' 
+                  para ser alineado con Flexbox junto al título. -->
+           <a href="https://rmns82839-rgb.github.io/Binarios-y-decimales-/"> 
+               class="external-link-btn"
+               title="Visitar Herramienta de Binarios y Decimales">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
+                    <path d="M12.75 3.75a.75.75 0 0 0-1.5 0v7.5c0 .414.336.75.75.75h7.5a.75.75 0 0 0 0-1.5h-5.69l3.19-3.19a.75.75 0 0 0-1.06-1.06l-4.19 4.19v-5.69Z" />
+                    <path fill-rule="evenodd" d="M12 1.5a.75.75 0 0 1 .75.75v3.626l-4.22 4.22a4.5 4.5 0 0 0-.25 6.004l.115.158a3 3 0 0 1 4.244 0l4.22-4.22V12a.75.75 0 0 1 1.5 0v7.5a.75.75 0 0 1-.75.75h-7.5a.75.75 0 0 1-.75-.75V12a.75.75 0 0 1 1.5 0v2.69l-4.22-4.22a3 3 0 0 1 .25-4.046l-.115-.158a4.5 4.5 0 0 0-.25-6.004l4.22-4.22V2.25a.75.75 0 0 1 .75-.75Z" clip-rule="evenodd" />
+                </svg>
+                Binario/Decimal
+            </a>
+        </header>
+
+        <div class="form-group">
+            <label for="ip-address">Dirección IP de Red Inicial (Ej: 192.168.1.0):</label>
+            <input type="text" id="ip-address" value="192.168.1.0" placeholder="Ej: 192.168.1.0">
+        </div>
+
+        <div class="form-group">
+            <label for="initial-cidr">Prefijo (CIDR) Inicial (Ej: 24):</label>
+            <input type="number" id="initial-cidr" value="24" min="1" max="30">
+        </div>
+
+        <!-- Modo de Cálculo (CLSM/VLSM) -->
+        <div class="calc-mode-selector">
+            <h3>Modo de Subnetting</h3>
+            <div class="radio-group">
+                <label>
+                    <input type="radio" name="calc-mode" value="clsm" checked onchange="toggleCLSMInputs(true)"> 
+                    CLSM (Tamaño Fijo)
+                </label>
+                <label>
+                    <input type="radio" name="calc-mode" value="vlsm" onchange="toggleCLSMInputs(false)"> 
+                    VLSM (Tamaño Variable)
+                </label>
+            </div>
+        </div>
+        
+        <!-- Controles CLSM -->
+        <div id="clsm-controls" class="card-section">
+            <h3 style="margin-top: 20px;">Requisito CLSM (Tamaño Fijo)</h3>
+            <div class="radio-group">
+                <label>
+                    <input type="radio" name="calc-type" value="hosts" checked> 
+                    Hosts Requeridos
+                </label>
+                <label>
+                    <input type="radio" name="calc-type" value="subnets"> 
+                    Subredes Requeridas
+                </label>
+            </div>
+            <label for="desired-value">Número Requerido:</label>
+            <input type="number" id="desired-value" value="30" min="1" placeholder="Ej: 30 hosts o 5 subredes">
+        </div>
+
+        <!-- Controles VLSM -->
+        <div id="vlsm-controls" class="card-section hidden">
+            <h3 style="margin-top: 20px;">Requisitos VLSM (Hosts por Subred)</h3>
+            <div id="host-requirements-list">
+                <!-- Inputs de host se añadirán aquí -->
+                <div class="vlsm-input-group">
+                    <input type="number" class="vlsm-host-input" value="50" min="1" placeholder="Hosts para Subred 1">
+                    <button type="button" class="remove-host-btn" onclick="removeHostInput(this)">-</button>
+                </div>
+                <div class="vlsm-input-group">
+                    <input type="number" class="vlsm-host-input" value="20" min="1" placeholder="Hosts para Subred 2">
+                    <button type="button" class="remove-host-btn" onclick="removeHostInput(this)">-</button>
+                </div>
+            </div>
+            <button type="button" class="add-host-btn" onclick="addHostInput()">+ Añadir Requisito de Host</button>
+        </div>
+
+        <!-- Botones de Acción -->
+        <div class="action-buttons">
+            <button type="button" onclick="calculateSubnetting()">Calcular Subnetting</button>
+            
+            <div class="pdf-print-section">
+                <label for="author-name">Nombre de quien realiza el cálculo (Para el PDF):</label>
+                <input type="text" id="author-name" placeholder="Ej: Juan Pérez - Curso Redes 2025">
+                <button type="button" onclick="printResults()" class="print-pdf-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
+                        <path fill-rule="evenodd" d="M12 2.25a.75.75 0 0 1 .75.75v16.19l2.72-2.72a.75.75 0 1 1 1.06 1.06l-4 4a.75.75 0 0 1-1.06 0l-4-4a.75.75 0 1 1 1.06-1.06l2.72 2.72V3a.75.75 0 0 1 .75-.75Z" clip-rule="evenodd" />
+                    </svg>
+                    Generar PDF / Imprimir
+                </button>
+            </div>
+        </div>
+
+        <!-- Contenedor de Resultados -->
+        <div id="results-container">
+            <h2>Resultados del Cálculo</h2>
+            <p>Ingrese los datos de la red y presione "Calcular Subnetting" para ver los resultados detallados.</p>
+        </div>
+    </div>
+
+    <!-- Vinculación del archivo JavaScript -->
+    <script src="script.js"></script>
+    <script>
+        // Inicializar el estado de los controles al cargar la página
+        document.addEventListener('DOMContentLoaded', () => {
+            toggleCLSMInputs(true);
+        });
+
+        // Toggle para la visibilidad de los controles CLSM/VLSM
+        function toggleCLSMInputs(isClsm) {
+            document.getElementById('clsm-controls').classList.toggle('hidden', !isClsm);
+            document.getElementById('vlsm-controls').classList.toggle('hidden', isClsm);
+        }
+
+        // Funciones para VLSM UI
+        function addHostInput() {
+            const list = document.getElementById('host-requirements-list');
+            const count = list.querySelectorAll('.vlsm-host-input').length + 1;
+            const newGroup = document.createElement('div');
+            newGroup.classList.add('vlsm-input-group');
+            newGroup.innerHTML = `
+                <input type="number" class="vlsm-host-input" min="1" placeholder="Hosts para Subred ${count}">
+                <button type="button" class="remove-host-btn" onclick="removeHostInput(this)">-</button>
+            `;
+            list.appendChild(newGroup);
+        }
+
+        function removeHostInput(button) {
+            const group = button.closest('.vlsm-input-group');
+            if (document.getElementById('host-requirements-list').children.length > 1) {
+                group.remove();
+            } else {
+                alert('Debe haber al menos un requisito de Host.');
+            }
+        }
+    </script>
+</body>
+</html>
