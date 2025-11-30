@@ -1,595 +1,739 @@
-/**
- * Lógica principal para la calculadora de Subnetting IP (CLSM y VLSM).
- */
+ /**
+         * Lógica principal para la calculadora de Subnetting IP (CLSM y VLSM),
+         * con persistencia de datos usando localStorage.
+         */
 
-function calculateSubnetting() {
-    const ipAddressStr = document.getElementById('ip-address').value;
-    const initialCidr = parseInt(document.getElementById('initial-cidr').value);
-    const calculationMode = document.querySelector('input[name="calc-mode"]:checked').value;
-    const resultsContainer = document.getElementById('results-container');
-    let output = '';
+        // ====================================================================
+        // CONFIGURACIÓN DE LOCAL STORAGE (PERSISTENCIA DE DATOS)
+        // ====================================================================
+        const LOCAL_STORAGE_KEY = 'subnettingAppData';
 
-    // 1. Validaciones
-    if (!isValidIP(ipAddressStr) || isNaN(initialCidr) || initialCidr < 1 || initialCidr > 30) {
-        output = '<p style="color: red;">Error: Por favor, ingrese una IP de red y un prefijo inicial válidos (entre /1 y /30).</p>';
-        resultsContainer.innerHTML = output;
-        return;
-    }
+        /**
+         * Guarda el estado actual de los inputs y los resultados en localStorage.
+         */
+        function saveInputState() {
+            try {
+                const ipAddress = document.getElementById('ip-address').value;
+                const cidr = document.getElementById('cidr').value;
+                const clsmSubnets = document.getElementById('clsm-subnets').value;
+                const calculationType = document.querySelector('input[name="calculation-type"]:checked').value;
+                
+                // Capturar los requisitos de hosts VLSM
+                const vlsmRequirements = Array.from(document.querySelectorAll('#host-requirements-list .vlsm-host-input'))
+                                            .map(input => ({ value: input.value, placeholder: input.placeholder }));
 
-    const ipOctets = ipAddressStr.split('.').map(Number);
+                // Capturar el contenido de los resultados para persistencia
+                const resultsHTML = document.getElementById('results-output').innerHTML;
+                const stepsHTML = document.getElementById('step-by-step-output').innerHTML;
 
-    if (calculationMode === 'vlsm') {
-        // 2. Ejecutar Lógica VLSM (Máscara de Subred de Longitud Variable)
-        const hostInputs = document.querySelectorAll('.vlsm-host-input');
-        const hostRequirements = Array.from(hostInputs)
-            .map(input => parseInt(input.value))
-            .filter(h => h > 0);
+                const dataToSave = {
+                    ipAddress,
+                    cidr,
+                    clsmSubnets,
+                    calculationType,
+                    vlsmRequirements,
+                    resultsHTML,
+                    stepsHTML
+                };
 
-        if (hostRequirements.length === 0) {
-            output = '<p style="color: red;">Error: Debe ingresar al menos un requisito de Hosts para VLSM.</p>';
-            resultsContainer.innerHTML = output;
-            return;
-        }
-
-        hostRequirements.sort((a, b) => b - a);
-        output = calculateVLSM(ipOctets, initialCidr, hostRequirements);
-
-    } else {
-        // 2. Ejecutar Lógica CLSM (Máscara de Subred Sin Clases - Tamaño Fijo)
-        const calculationType = document.querySelector('input[name="calc-type"]:checked').value;
-        const desiredValue = parseInt(document.getElementById('desired-value').value);
-        
-        if (isNaN(desiredValue) || desiredValue < 1) {
-            output = '<p style="color: red;">Error: El valor deseado no puede ser menor a 1.</p>';
-            resultsContainer.innerHTML = output;
-            return;
-        }
-        
-        output = calculateCLSM(ipOctets, initialCidr, calculationType, desiredValue);
-    }
-
-    // 3. Insertar el contenido
-    resultsContainer.innerHTML = output;
-}
-
-// ----------------------------------------------------------------------
-// LÓGICA CLSM (TAMAÑO FIJO)
-// ----------------------------------------------------------------------
-
-/**
- * Lógica para cálculo CLSM (Subnetting de Tamaño Fijo).
- */
-function calculateCLSM(ipOctets, initialCidr, calculationType, desiredValue) {
-    const newCidrResult = calculateNewCIDR(initialCidr, calculationType, desiredValue);
-    
-    if (newCidrResult.error) {
-        return `<p style="color: red;">Error: ${newCidrResult.error}</p>`;
-    }
-
-    const desiredCidr = newCidrResult.cidr;
-    const borrowedBits = desiredCidr - initialCidr;
-    const hostBits = 32 - desiredCidr;
-    const totalAddresses = Math.pow(2, hostBits);
-    const subnetCount = Math.pow(2, borrowedBits);
-    
-    const maskDetails = getMaskCalculationDetails(desiredCidr);
-    
-    let output = `<h2>Paso a Paso del Cálculo (CLSM)</h2>`;
-    output += `<small>Classless Subnet Mask (Máscara de Subred sin Clases)</small>`;
-    output += `<p><strong>IP de Red Inicial:</strong> ${ipOctets.join('.')}/${initialCidr}</p>`;
-    output += `<p><strong>Prefijo Calculado (Nuevo CIDR):</strong> /${desiredCidr}</p>`;
-    
-    output += `<h3>1. Determinación de Bits y Potencias</h3>`;
-    output += `<p><strong>Bits de Host:</strong> ${hostBits} bits, ya que 2^${hostBits} = ${totalAddresses} direcciones totales.</p>`;
-    output += `<p><strong>Bits de Subred:</strong> ${borrowedBits} bits, ya que 2^${borrowedBits} = ${subnetCount} subredes.</p>`;
-    
-    output += `<h3>2. Representación Binaria y Máscara</h3>`;
-    output += createBinaryRepresentation(ipOctets, initialCidr, desiredCidr);
-    
-    // PASO DETALLADO DE LA MÁSCARA
-    output += `<h4>Cálculo del Bloque y la Máscara</h4>`;
-    output += `<p>1. El cambio de la máscara ocurre en el <strong>Octeto ${maskDetails.octet}</strong>.</p>`;
-    output += `<p>2. El <strong>Tamaño del Bloque (Salto)</strong> es: 2^(32-${desiredCidr}) = ${maskDetails.blockSize} direcciones.</p>`;
-    output += `<p>3. El valor del <strong>Octeto de Máscara</strong> es la resta de 256 menos el valor del salto para ese octeto:</p>`;
-    output += `<p style="margin-left: 20px;">Octeto de Máscara = 256 - Bloque de Salto en Octeto</p>`;
-    output += `<p style="margin-left: 20px;">Octeto de Máscara = 256 - ${maskDetails.changingOctetBlock} = ${maskDetails.maskValue}</p>`;
-    
-    output += `<p><strong>Máscara de Subred Final:</strong> ${maskDetails.maskStr}</p>`;
-
-    output += `<h3>3. Detalles de Subredes (Salto y Rangos)</h3>`;
-    output += `<p>El salto entre subredes es de <strong>${maskDetails.changingOctetBlock}</strong> en el Octeto ${maskDetails.octet}.</p>`;
-    output += `<h4>Formato Decimal</h4>`;
-    output += createSubnetTable(ipOctets, initialCidr, desiredCidr, subnetCount, 'decimal');
-    output += `<h4>Formato Binario</h4>`;
-    output += createSubnetTable(ipOctets, initialCidr, desiredCidr, subnetCount, 'binary');
-
-    return output;
-}
-
-// ----------------------------------------------------------------------
-// LÓGICA VLSM (TAMAÑO VARIABLE)
-// ----------------------------------------------------------------------
-
-/**
- * Lógica para cálculo VLSM (Subnetting de Tamaño Variable).
- */
-function calculateVLSM(ipOctets, initialCidr, hostRequirements) {
-    let output = `<h2>Paso a Paso del Cálculo (VLSM)</h2>`;
-    output += `<small>Variable Length Subnet Mask (Máscara de Subred de Longitud Variable)</small>`;
-    output += `<p><strong>IP de Red Inicial:</strong> ${ipOctets.join('.')}/${initialCidr}</p>`;
-    output += `<p><strong>Requisitos de Hosts (ordenados de mayor a menor):</strong> ${hostRequirements.join(', ')}</p>`;
-    
-    let currentIPint = (ipOctets[0] << 24) + (ipOctets[1] << 16) + (ipOctets[2] << 8) + ipOctets[3];
-    const initialNetworkMask = -1 << (32 - initialCidr);
-    currentIPint &= initialNetworkMask; 
-    
-    let subnetDetails = [];
-    let failure = null;
-
-    hostRequirements.forEach((requiredHosts, index) => {
-        if (failure) return;
-
-        const hostBits = Math.max(2, Math.ceil(Math.log2(requiredHosts + 2)));
-        const subnetCidr = 32 - hostBits;
-        
-        if (subnetCidr < initialCidr) {
-            failure = `Error: El requisito de ${requiredHosts} hosts excede el tamaño de la red inicial /${initialCidr}.`;
-            return;
-        }
-
-        const blocksize = Math.pow(2, hostBits);
-        const nextNetAddressInt = currentIPint + blocksize;
-
-        const initialMaxAddress = currentIPint | (~initialNetworkMask);
-        if (nextNetAddressInt > initialMaxAddress + 1) { 
-            failure = `Error: El requisito de ${requiredHosts} hosts para la Subred ${index + 1} no cabe en el espacio restante de la red inicial.`;
-            return;
-        }
-
-        subnetDetails.push({
-            netAddressInt: currentIPint,
-            cidr: subnetCidr,
-            requiredHosts: requiredHosts,
-            usableHosts: blocksize - 2,
-            blocksize: blocksize,
-            hostBits: hostBits,
-            name: `Subred ${index + 1}`
-        });
-
-        currentIPint = nextNetAddressInt;
-    });
-
-    if (failure) return `<p style="color: red;">${failure}</p>`;
-    
-    // Generar la salida de resultados
-    
-    output += `<h3>1. Asignación Detallada (Paso a Paso)</h3>`;
-    subnetDetails.forEach((subnet, index) => {
-        const maskDetails = getMaskCalculationDetails(subnet.cidr);
-        
-        output += `<h4>${subnet.name}: ${subnet.requiredHosts} Hosts (/${subnet.cidr})</h4>`;
-        output += `<p><strong>Hosts requeridos:</strong> ${subnet.requiredHosts}</p>`;
-        
-        // Cálculo de Bits
-        output += `<p><strong>Bits de Host:</strong> ${subnet.hostBits} bits, ya que 2^${subnet.hostBits} = ${subnet.blocksize} direcciones totales. (${subnet.blocksize - 2} hosts utilizables).</p>`;
-        
-        // Cálculo de Máscara
-        output += `<h5>Cálculo de Máscara y Bloque (${maskDetails.maskStr})</h5>`;
-        output += `<p>El <strong>Tamaño del Bloque (Salto)</strong> es: 2^(32-${subnet.cidr}) = ${maskDetails.blockSize} direcciones.</p>`;
-        output += `<p>El octeto que cambia es el ${maskDetails.octet} con un valor de ${maskDetails.changingOctetBlock} (que se resta a 256).</p>`;
-        output += `<p><strong>Máscara Asignada:</strong> ${maskDetails.maskStr}</p>`;
-        
-        // Simulación del tablero (IP y Bits)
-        output += createBinaryRepresentationStep(intToIp(subnet.netAddressInt).split('.').map(Number), initialCidr, subnet.cidr); 
-    });
-    
-    output += `<h3>2. Rangos de Subredes VLSM</h3>`;
-    output += `<h4>Formato Decimal</h4>`;
-    output += createVLSMTable(subnetDetails, 'decimal');
-    output += `<h4>Formato Binario</h4>`;
-    output += createVLSMTable(subnetDetails, 'binary');
-
-    return output;
-}
-
-// ----------------------------------------------------------------------
-// FUNCIONES AUXILIARES DE CÁLCULO
-// ----------------------------------------------------------------------
-
-/**
- * Calcula los detalles necesarios para explicar la máscara (octeto, bloque, valor).
- */
-function getMaskCalculationDetails(cidr) {
-    const octet = Math.floor((cidr - 1) / 8) + 1;
-    const blockSize = Math.pow(2, 32 - cidr);
-    
-    // Calcula el valor del salto SÓLO para el octeto que cambia
-    const changingOctetBlock = blockSize / Math.pow(2, 8 * (4 - octet));
-    const maskValue = 256 - changingOctetBlock;
-    const maskStr = cidrToMask(cidr);
-    
-    return {
-        octet: octet,
-        blockSize: blockSize,
-        changingOctetBlock: changingOctetBlock,
-        maskValue: maskValue,
-        maskStr: maskStr
-    };
-}
-
-/**
- * Calcula el nuevo CIDR en función de los hosts o subredes requeridos (CLSM).
- */
-function calculateNewCIDR(initialCidr, type, value) {
-    let desiredCidr = 0;
-    
-    if (type === 'hosts') {
-        const requiredAddresses = value + 2;
-        let hostBits = 0;
-        
-        while (Math.pow(2, hostBits) < requiredAddresses && hostBits < (32 - initialCidr)) {
-            hostBits++;
-        }
-        
-        if (hostBits < 2 || (hostBits === (32 - initialCidr) && Math.pow(2, hostBits) < requiredAddresses)) { 
-            return { error: `No es posible satisfacer ${value} hosts dentro de la red inicial /${initialCidr}.` };
-        }
-        
-        desiredCidr = 32 - hostBits;
-        return { cidr: desiredCidr, goal: `Mínimo de ${value} Hosts por Subred` };
-    } 
-    
-    else if (type === 'subnets') {
-        let borrowedBits = 0;
-        const maxBorrowedBits = 30 - initialCidr;
-
-        while (Math.pow(2, borrowedBits) < value && borrowedBits < maxBorrowedBits) {
-            borrowedBits++;
-        }
-        
-        desiredCidr = initialCidr + borrowedBits;
-
-        if (desiredCidr > 30) {
-             return { error: `No es posible crear ${value} subredes y dejar bits para hosts utilizables.` };
-        }
-        
-        return { cidr: desiredCidr, goal: `Mínimo de ${value} Subredes` };
-    }
-}
-
-// ----------------------------------------------------------------------
-// FUNCIONES AUXILIARES DE FORMATO
-// ----------------------------------------------------------------------
-
-function isValidIP(ipAddress) {
-    const regex = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-    return regex.test(ipAddress);
-}
-
-function cidrToMask(cidr) {
-    let mask = '';
-    let currentCidr = cidr;
-    for (let i = 0; i < 4; i++) {
-        let n = Math.min(currentCidr, 8);
-        let octetValue = 256 - Math.pow(2, 8 - n); 
-        mask += (i > 0 ? '.' : '') + octetValue;
-        currentCidr -= n;
-    }
-    return mask;
-}
-
-function decToBinary(dec, bits = 8) {
-    return dec.toString(2).padStart(bits, '0');
-}
-
-function intToIp(ipInt) {
-    return `${(ipInt >>> 24) & 0xFF}.${(ipInt >>> 16) & 0xFF}.${(ipInt >>> 8) & 0xFF}.${ipInt & 0xFF}`;
-}
-
-function intToBinaryIp(ipInt) {
-    let binStr = (ipInt >>> 0).toString(2).padStart(32, '0');
-    return `${binStr.substring(0, 8)}.${binStr.substring(8, 16)}.${binStr.substring(16, 24)}.${binStr.substring(24, 32)}`;
-}
-
-/**
- * Genera la representación visual de los bits (Red, Subred, Host) para VLSM.
- */
-function createBinaryRepresentationStep(ipOctets, initialCidr, desiredCidr) {
-    let binaryIP = ipOctets.map(dec => decToBinary(dec)).join('');
-    
-    const borrowedBits = desiredCidr - initialCidr;
-    const hostBits = 32 - desiredCidr;
-    
-    let visualOutput = `
-        <div class="binary-viz-container">
-        <p style="margin: 0; padding-bottom: 5px;"><strong>Dirección de Red:</strong> ${ipOctets.join('.')}/${desiredCidr}</p>
-        
-        <div style="font-family: var(--font-mono); font-size: 16px; display: inline-block;">`;
-
-    let bitLine = '';
-    let ipBits = '';
-
-    // Estilos internos simplificados para la impresión
-    const wrapBits = (index, char) => {
-        let style = '';
-        if (index < initialCidr) {
-            style = 'color: #007bff; font-weight: bold;'; // Azul
-        } else if (index < desiredCidr) {
-            style = 'color: #28a745; font-weight: bold; text-decoration: underline;'; // Verde
-        } else {
-            style = 'color: #dc3545;'; // Rojo
-        }
-        return `<span style="${style}">${char}</span>`;
-    };
-    
-    for (let i = 0; i < 32; i++) {
-        let spacer = (i > 0 && i % 8 === 0) ? '<span>.</span>' : '';
-        ipBits += spacer + wrapBits(i, binaryIP[i]);
-        
-        // Genera la línea de marcadores para Red/Subred/Host
-        if (i < 31) {
-            if (i === initialCidr - 1) { 
-                bitLine += `<span style="width: 1ch; display: inline-block;">|</span>`;
-            } else if (i === desiredCidr - 1) { 
-                 bitLine += `<span style="width: 1ch; display: inline-block;">|</span>`;
-            } else if ((i + 1) % 8 === 0) { 
-                 bitLine += `<span style="width: 1ch; display: inline-block;">.</span>`;
-            } else {
-                 bitLine += `<span style="width: 1ch; display: inline-block;">&nbsp;</span>`;
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(dataToSave));
+                // console.log("Estado de la aplicación guardado con éxito en localStorage.");
+                
+            } catch (error) {
+                console.error("Error al guardar el estado en localStorage:", error);
             }
         }
-    }
-    
-    visualOutput += `<div>${ipBits}</div>`;
-    visualOutput += `<div style="margin-top: 5px; margin-bottom: 5px;">${bitLine}</div>`;
-    
-    visualOutput += `
-        <p style="margin: 0; font-size: 12px;">
-            <span style="color: #007bff; font-weight: bold;">Red Original</span> | 
-            <span style="color: #28a745; font-weight: bold;">Bits de Subred (${borrowedBits})</span> | 
-            <span style="color: #dc3545;">Bits de Host (${hostBits})</span>
-        </p>
-        </div>
-        </div>
-    `;
 
-    return visualOutput;
-}
 
-/**
- * Genera la representación visual de los bits (Red, Subred, Host) para CLSM.
- */
-function createBinaryRepresentation(ipOctets, initialCidr, desiredCidr) {
-    let binaryIP = ipOctets.map(dec => decToBinary(dec)).join('');
-    
-    const borrowedBits = desiredCidr - initialCidr;
-    const hostBits = 32 - desiredCidr;
-    let visualOutput = `
-        <div class="binary-viz-container">
-        <p style="margin: 0; padding-bottom: 5px;"><strong>Ejemplo Binario con Prefijo /${desiredCidr}:</strong></p>
-        <div style="font-family: var(--font-mono); font-size: 16px; display: flex; gap: 5px; margin-bottom: 10px; flex-wrap: wrap;">`;
-    
-    const wrapBits = (index, char) => {
-        let style = '';
-        if (index < initialCidr) {
-            style = 'color: #007bff; font-weight: bold;'; // Azul
-        } else if (index < desiredCidr) {
-            style = 'color: #28a745; font-weight: bold; text-decoration: underline;'; // Verde
-        } else {
-            style = 'color: #dc3545;'; // Rojo
+        /**
+         * Carga el estado guardado desde localStorage y restaura la UI.
+         */
+        function loadInputState() {
+            try {
+                const storedData = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (!storedData) {
+                    // console.log("No hay estado guardado previamente en localStorage.");
+                    return;
+                }
+
+                const data = JSON.parse(storedData);
+                
+                // 1. Restaurar Inputs
+                document.getElementById('ip-address').value = data.ipAddress || '';
+                document.getElementById('cidr').value = data.cidr || 24;
+                document.getElementById('clsm-subnets').value = data.clsmSubnets || '';
+                
+                // 2. Restaurar Tipo de Cálculo (CLSM/VLSM)
+                const typeInput = document.getElementById(data.calculationType);
+                if (typeInput) {
+                    typeInput.checked = true;
+                    toggleCLSMInputs(data.calculationType === 'clsm');
+                } else {
+                     // Si no hay tipo guardado, usar el default (CLSM)
+                    document.getElementById('clsm').checked = true;
+                    toggleCLSMInputs(true);
+                }
+
+                // 3. Restaurar Requisitos VLSM
+                const hostList = document.getElementById('host-requirements-list');
+                // Limpiar la lista actual
+                while (hostList.children.length > 0) {
+                    hostList.removeChild(hostList.lastChild);
+                }
+                
+                // Restaurar los requisitos guardados
+                if (data.vlsmRequirements && data.vlsmRequirements.length > 0) {
+                    data.vlsmRequirements.forEach((req, index) => {
+                        addHostInput(req.value || '', req.placeholder || `Hosts para Subred ${index + 1}`);
+                    });
+                } else {
+                     // Asegurar que al menos haya un campo VLSM si no hay datos
+                    addHostInput('', `Hosts para Subred 1`);
+                }
+
+
+                // 4. Restaurar Resultados y Paso a Paso
+                document.getElementById('results-output').innerHTML = data.resultsHTML || '<p>Ingrese los datos y presione "CALCULAR SUBREDES" para ver los resultados.</p>';
+                document.getElementById('step-by-step-output').innerHTML = data.stepsHTML || '<p>El proceso detallado de la segmentación se mostrará aquí.</p>';
+                
+                // 5. Re-renderizar MathJax
+                if (window.MathJax) {
+                    window.MathJax.typesetPromise();
+                }
+
+                // console.log("Estado de la aplicación cargado con éxito desde localStorage.");
+            } catch (error) {
+                console.error("Error al cargar el estado desde localStorage:", error);
+            }
         }
-        return `<span style="${style}">${char}</span>`;
-    };
 
-    for (let i = 0; i < 32; i++) {
-        if (i > 0 && i % 8 === 0) {
-            visualOutput += '<span>.</span>';
+
+        /**
+         * Borra el estado guardado en localStorage y refresca la página.
+         */
+        function clearAll() {
+            // Utilizamos un modal sencillo en lugar de alert/confirm
+            const customConfirm = document.getElementById('custom-confirm-modal');
+            if (customConfirm) {
+                 customConfirm.remove();
+            }
+
+            if (!window.confirm('¿Estás seguro de que quieres borrar todos los datos guardados localmente y recargar la página?')) {
+                return;
+            }
+            
+            try {
+                localStorage.removeItem(LOCAL_STORAGE_KEY);
+                console.log("Datos de persistencia eliminados con éxito. Recargando...");
+                window.location.reload(); 
+            } catch (error) {
+                console.error("Error al eliminar el estado de localStorage:", error);
+                window.location.reload();
+            }
         }
-        visualOutput += wrapBits(i, binaryIP[i]);
-    }
 
-    visualOutput += `
-        </div>
-        <p style="margin: 0; font-size: 12px;">
-            <span style="color: #007bff; font-weight: bold;">Azul: Red Original (${initialCidr} bits)</span> | 
-            <span style="color: #28a745; font-weight: bold; text-decoration: underline;">Verde Subrayado: Bits Prestados (${borrowedBits} bits)</span> | 
-            <span style="color: #dc3545;">Rojo: Bits de Host (${hostBits} bits)</span>
-        </p>
-        </div>
-    `;
+        // ====================================================================
+        // CALCULADORA DE EXPONENTES
+        // ====================================================================
 
-    return visualOutput;
-}
+        /**
+         * Calcula 2 elevado a la 'n' y muestra el resultado en la UI.
+         */
+        function calculateExponent() {
+            const inputElement = document.getElementById('exponent-input');
+            const outputElement = document.getElementById('exponent-output');
+            const n = parseInt(inputElement.value, 10);
 
-/**
- * Crea la tabla de rangos para VLSM.
- */
-function createVLSMTable(subnetDetails, format) {
-    const isBinary = format === 'binary';
-    let tableHtml = `<div class="subnet-table-wrapper">
-        <table class="subnet-table" style="font-size: ${isBinary ? '12px' : 'inherit'};">
-        <thead>
-            <tr>
-                <th>Subred (CIDR)</th>
-                <th>Dirección de Red</th>
-                <th>Primer Host</th>
-                <th>Último Host</th>
-                <th>Broadcast</th>
-            </tr>
-        </thead>
-        <tbody>`;
+            if (isNaN(n) || n < 0 || n > 31) {
+                outputElement.innerHTML = `<span class="error-message">Por favor, ingrese un número entre 0 y 31.</span>`;
+                return;
+            }
 
-    subnetDetails.forEach((subnet) => {
-        const netAddressInt = subnet.netAddressInt;
-        const blocksize = subnet.blocksize;
-        const desiredCidr = subnet.cidr;
-        
-        const broadcastAddressInt = netAddressInt + blocksize - 1;
-        
-        const getAddressFormat = (ipInt) => {
-            return isBinary ? intToBinaryIp(ipInt) : intToIp(ipInt);
-        };
-
-        const netAddress = getAddressFormat(netAddressInt);
-        const firstHost = getAddressFormat(netAddressInt + 1);
-        const lastHost = getAddressFormat(broadcastAddressInt - 1);
-        const broadcastAddress = getAddressFormat(broadcastAddressInt);
-
-        tableHtml += `
-            <tr>
-                <td><strong>${subnet.name} (/${desiredCidr})</strong></td>
-                <td><strong>${netAddress}</strong></td>
-                <td>${firstHost}</td>
-                <td>${lastHost}</td>
-                <td><strong>${broadcastAddress}</strong></td>
-            </tr>`;
-    });
-
-    tableHtml += `</tbody></table></div>`;
-    return tableHtml;
-}
-
-/**
- * Crea la tabla de rangos para CLSM.
- */
-function createSubnetTable(ipOctets, initialCidr, desiredCidr, subnetCount, format) {
-    const isBinary = format === 'binary';
-    let tableHtml = `<div class="subnet-table-wrapper">
-        <table class="subnet-table" style="font-size: ${isBinary ? '12px' : 'inherit'};">
-        <thead>
-            <tr>
-                <th>Subred #</th>
-                <th>Dirección de Red</th>
-                <th>Primer Host</th>
-                <th>Último Host</th>
-                <th>Broadcast</th>
-            </tr>
-        </thead>
-        <tbody>`;
-
-    const totalAddresses = Math.pow(2, 32 - desiredCidr);
-    const numSubnetsToShow = Math.min(subnetCount, 8);
-    const blocksize = totalAddresses;
-    
-    let currentIPint = (ipOctets[0] << 24) + (ipOctets[1] << 16) + (ipOctets[2] << 8) + ipOctets[3];
-    const initialNetworkMask = -1 << (32 - initialCidr);
-    currentIPint &= initialNetworkMask; 
-    
-    const getAddressFormat = (ipInt) => {
-        return isBinary ? intToBinaryIp(ipInt) : intToIp(ipInt);
-    };
-
-    for (let i = 0; i < numSubnetsToShow; i++) {
-        const netAddressInt = currentIPint + (i * blocksize);
-        const broadcastAddressInt = netAddressInt + blocksize - 1;
-        
-        const netAddress = getAddressFormat(netAddressInt);
-        const firstHost = getAddressFormat(netAddressInt + 1);
-        const lastHost = getAddressFormat(broadcastAddressInt - 1);
-        const broadcastAddress = getAddressFormat(broadcastAddressInt);
-
-        tableHtml += `
-            <tr>
-                <td><strong>${i}</strong></td>
-                <td><strong>${netAddress}/${desiredCidr}</strong></td>
-                <td>${firstHost}/${desiredCidr}</td>
-                <td>${lastHost}/${desiredCidr}</td>
-                <td><strong>${broadcastAddress}/${desiredCidr}</strong></td>
-            </tr>`;
-    }
-
-    tableHtml += `
-        </tbody>
-        </table></div>`;
-        
-    if (subnetCount > numSubnetsToShow) {
-        tableHtml += `<p style="margin-top: 10px; color: #6c757d;">... Se muestran solo las primeras ${numSubnetsToShow} de ${subnetCount} subredes.</p>`;
-    }
-    
-    return tableHtml;
-}
-
-// ----------------------------------------------------------------------
-// FUNCIONALIDAD DE IMPRESIÓN / PDF DETALLADO
-// ----------------------------------------------------------------------
-
-/**
- * Obtiene la fecha y hora actual en formato legible.
- */
-function getFormattedDateTime() {
-    const now = new Date();
-    const date = now.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    const time = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    return `${date} - ${time}`;
-}
-
-/**
- * Prepara el contenido para la impresión, añade metadatos y lanza el diálogo de impresión.
- */
-function printResults() {
-    const resultsContainer = document.getElementById('results-container');
-    const authorName = document.getElementById('author-name').value || 'Anónimo';
-
-    if (resultsContainer.innerHTML.includes('<h2>Resultados del Cálculo</h2>')) {
-        // Asumiendo que solo tiene el mensaje inicial
-        alert('Por favor, realiza un cálculo primero antes de imprimir.');
-        return;
-    }
-
-    // 1. Crear un contenedor temporal para la impresión
-    const printWindow = window.open('', '', 'height=600,width=800');
-    
-    // 2. Crear encabezado y contenido
-    const headerHtml = `
-        <div style="margin-bottom: 30px;">
-            <h1 style="color: #333; text-align: center; margin-bottom: 20px; font-size: 24px; border-bottom: 2px solid #333; padding-bottom: 10px;">
-                Reporte Detallado de Subnetting
-            </h1>
-            <div style="border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; font-size: 14px; background-color: #f0f0f0;">
-                <strong>Realizado por:</strong> ${authorName} <br>
-                <strong>Fecha de Reporte:</strong> ${getFormattedDateTime()} <br>
-                <strong>Herramienta:</strong> Calculadora de Subnetting IP
-            </div>
-        </div>
-    `;
-
-    // 3. Escribir el HTML completo para la impresión
-    printWindow.document.write('<!DOCTYPE html><html><head><title>Reporte de Subnetting</title>');
-    
-    // Incluir estilos optimizados para impresión
-    printWindow.document.write('<style>');
-    printWindow.document.write(`
-        body { font-family: 'Roboto', sans-serif; color: #000; margin: 30px; }
-        h1 { color: #1e88e5; border-bottom: 2px solid #1e88e5; padding-bottom: 10px; margin-top: 0; }
-        h2 { color: #1e88e5; border-left: 5px solid #ff7043; padding-left: 10px; font-size: 1.4rem; }
-        h3, h4, h5 { color: #333; }
-        p strong { color: #ff7043; font-weight: bold; }
-        /* Tablas */
-        .subnet-table-wrapper { overflow: visible; }
-        .subnet-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 10pt; table-layout: fixed; }
-        .subnet-table th, .subnet-table td { border: 1px solid #ccc; padding: 8px 5px; text-align: center; word-wrap: break-word; }
-        .subnet-table thead th { background-color: #1e88e5; color: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .subnet-table tbody tr:nth-child(even) { background-color: #f2f2f2; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        /* Visualización Binaria */
-        .binary-viz-container {
-            border: 1px solid #ccc; padding: 10px; margin: 15px 0; background-color: #f8f8f8;
-            -webkit-print-color-adjust: exact; print-color-adjust: exact;
+            const result = Math.pow(2, n);
+            const resultString = result.toLocaleString('es-ES'); // Formato de miles
+            
+            outputElement.innerHTML = `
+                $$2^{${n}} = ${resultString}$$
+            `;
+            
+            // Re-renderizar MathJax solo en esta sección
+            if (window.MathJax) {
+                window.MathJax.typesetPromise([outputElement]).catch(err => console.log('MathJax error in exponent:', err));
+            }
         }
-        .binary-viz-container p { font-size: 12px; }
-    `);
-    printWindow.document.write('</style>');
-    printWindow.document.write('</head><body>');
-    
-    // 4. Escribir el contenido
-    printWindow.document.write(headerHtml);
-    printWindow.document.write(resultsContainer.innerHTML);
-    
-    printWindow.document.write('</body></html>');
-    printWindow.document.close();
-    
-    // 5. Iniciar la impresión
-    printWindow.focus();
-    printWindow.print();
-    // No cerramos la ventana automáticamente ya que el diálogo de impresión
-    // del navegador podría cerrarla si se cancela o completa.
-}
+
+
+        // ====================================================================
+        // LÓGICA DE SUBREDES (CLSM/VLSM)
+        // ====================================================================
+        
+        /**
+         * Convierte un número entero de 32 bits a una cadena binaria de 32 bits,
+         * dividida en octetos.
+         * @param {number} ipInt Entero de 32 bits que representa la IP.
+         * @param {number} startCidr CIDR inicial.
+         * @param {number} newCidr CIDR de la subred (para colorear).
+         * @param {('red'|'mask'|'broadcast')} type Tipo de coloración de bits.
+         * @returns {string} HTML formateado con bits coloreados.
+         */
+        function formatBinaryStep(ipInt, startCidr, newCidr, type) {
+            // >>> 0 asegura que el número se trate como un entero sin signo de 32 bits
+            let binary32 = (ipInt >>> 0).toString(2).padStart(32, '0');
+            let html = '';
+
+            for (let i = 0; i < 4; i++) {
+                const octet = binary32.substring(i * 8, (i + 1) * 8);
+                let octetHtml = '';
+
+                for (let j = 0; j < 8; j++) {
+                    const bitIndex = i * 8 + j + 1;
+                    const bit = octet[j];
+                    let className = 'bit-zero';
+
+                    if (type === 'mask') {
+                        // Coloración para Máscara: 1s hasta newCidr, 0s después
+                        className = bitIndex <= newCidr ? 'bit-one' : 'bit-zero';
+                    } else { 
+                        // Coloración para IP/Red/Broadcast
+                        if (bitIndex <= newCidr) {
+                             // Bits de Red/Subred
+                            if (bitIndex <= startCidr) {
+                                className = 'bit-one'; // Bits de Red originales (1)
+                            } else {
+                                className = 'bit-subnet'; // Bits de Subred (prestados, 1)
+                            }
+                        } else {
+                            // Bits de Host
+                            if (type === 'broadcast') {
+                                className = 'bit-one'; // Bits de Host a 1 (Broadcast)
+                            } else {
+                                className = 'bit-zero'; // Bits de Host a 0 (ID de Red)
+                            }
+                        }
+                        
+                        // Si el bit es 0, forzamos el color gris (bit-zero)
+                        if (bit === '0' && className !== 'bit-zero') {
+                            className = 'bit-zero'; 
+                        }
+                    }
+
+                    octetHtml += `<span class="${className}">${bit}</span>`;
+                }
+
+                html += `<div class="octet-group">${octetHtml}</div>`;
+            }
+            return html;
+        }
+
+
+        /**
+         * Valida la dirección IP y el CIDR.
+         */
+        function validateInput(ipAddress, cidr) {
+            const octets = ipAddress.split('.').map(Number);
+            if (octets.length !== 4 || octets.some(o => isNaN(o) || o < 0 || o > 255)) {
+                return { isValid: false, message: "La dirección IP es inválida.", ipOctets: [] };
+            }
+            if (isNaN(cidr) || cidr < 0 || cidr > 32) {
+                return { isValid: false, message: "El CIDR es inválido (debe estar entre 0 y 32).", ipOctets: [] };
+            }
+            return { isValid: true, message: "", ipOctets: octets };
+        }
+
+        /**
+         * Convierte un número CIDR a máscara de subred en formato decimal.
+         */
+        function cidrToMask(cidr) {
+            let mask = [];
+            let tempCidr = cidr;
+            for (let i = 0; i < 4; i++) {
+                let octet = 0;
+                for (let j = 0; j < 8; j++) {
+                    if (tempCidr > 0) {
+                        octet += Math.pow(2, 7 - j);
+                        tempCidr--;
+                    }
+                }
+                mask.push(octet);
+            }
+            return mask.join('.');
+        }
+
+        /**
+         * Convierte un array de octetos IP a un entero de 32 bits.
+         */
+        function ipOctetsToInt(ipOctets) {
+            // Usamos | 0 para asegurar que el resultado es un entero
+            return (ipOctets[0] << 24) + (ipOctets[1] << 16) + (ipOctets[2] << 8) + ipOctets[3];
+        }
+
+        /**
+         * Convierte un entero de 32 bits a un string de IP DOT decimal.
+         */
+        function ipIntToDotDecimal(ipInt) {
+             // >>> 0 asegura el comportamiento de unsigned int
+             return [
+                (ipInt >>> 24) & 0xFF,
+                (ipInt >>> 16) & 0xFF,
+                (ipInt >>> 8) & 0xFF,
+                ipInt & 0xFF
+            ].join('.');
+        }
+
+
+        /**
+         * Realiza el cálculo de Subnetting (CLSM o VLSM) y genera el paso a paso.
+         */
+        function calculateSubnetting() {
+            const ipAddress = document.getElementById('ip-address').value.trim();
+            const cidr = parseInt(document.getElementById('cidr').value, 10);
+            const calculationType = document.querySelector('input[name="calculation-type"]:checked').value;
+            const resultsDiv = document.getElementById('results-output');
+            const stepsDiv = document.getElementById('step-by-step-output');
+            
+            resultsDiv.innerHTML = '';
+            stepsDiv.innerHTML = '';
+
+            const validation = validateInput(ipAddress, cidr);
+            if (!validation.isValid) {
+                resultsDiv.innerHTML = `<p class="error-message">${validation.message}</p>`;
+                saveInputState();
+                return;
+            }
+
+            const ipOctets = validation.ipOctets;
+            const steps = [];
+            let subnets = [];
+            
+            // Calculamos la IP de Red inicial con la máscara original
+            const initialMaskInt = (0xFFFFFFFF << (32 - cidr)) >>> 0;
+            let currentIpInt = ipOctetsToInt(ipOctets);
+            const networkStartInt = currentIpInt & initialMaskInt;
+            currentIpInt = networkStartInt; // La IP de inicio es el ID de la red base
+
+
+            steps.push({
+                title: "Paso 1: Validación y Parámetros Iniciales",
+                content: `Dirección IP: \`${ipAddress}\`. Prefijo CIDR Inicial: \`/${cidr}\`. Tipo de Cálculo: ${calculationType.toUpperCase()}.`,
+                math: null
+            });
+            
+            // =============================================================
+            // CLSM (Máscara de Subred Fija)
+            // =============================================================
+            if (calculationType === 'clsm') {
+                const requiredSubnetsInput = document.getElementById('clsm-subnets').value;
+                const requiredSubnets = parseInt(requiredSubnetsInput, 10);
+
+                if (isNaN(requiredSubnets) || requiredSubnets < 2) {
+                    resultsDiv.innerHTML = `<p class="error-message">Para CLSM, ingrese un número de subredes mayor o igual a 2.</p>`;
+                    saveInputState();
+                    return;
+                }
+
+                // Paso 2: Cálculo de bits de subred
+                let bitsNeeded = 0;
+                while (Math.pow(2, bitsNeeded) < requiredSubnets) {
+                    bitsNeeded++;
+                }
+                const totalSubnets = Math.pow(2, bitsNeeded);
+                const newCidr = cidr + bitsNeeded;
+
+                if (newCidr > 30) { 
+                    resultsDiv.innerHTML = `<p class="error-message">No es posible segmentar. Se requiere un CIDR /${newCidr}, excediendo el límite usable de /30 para tener hosts usables.</p>`;
+                    saveInputState();
+                    return;
+                }
+                
+                // Cálculo de Hosts
+                const hostBits = 32 - newCidr;
+                const totalHostsPerSubnet = Math.pow(2, hostBits);
+                const usableHostsPerSubnet = totalHostsPerSubnet - 2;
+                const newMask = cidrToMask(newCidr);
+                const newMaskInt = (0xFFFFFFFF << (32 - newCidr)) >>> 0;
+                
+                // MÁSCARA BINARIA INICIAL
+                const initialIpInt = ipOctetsToInt(ipOctets);
+
+                steps.push({
+                    title: "Paso 2: Bits de Subred y Nueva Máscara",
+                    content: `Se necesitan ${requiredSubnets} subredes. Se busca 'n' tal que $2^n \\ge ${requiredSubnets}$.`,
+                    math: `\\text{Bits de Subred (n)} = ${bitsNeeded} \\quad (2^{${bitsNeeded}} = ${totalSubnets})`,
+                    details: `Nuevo CIDR: $/${newCidr}$. Máscara: ${newMask}.`
+                });
+                
+                steps.push({
+                    title: "Paso 3: Hosts por Subred y Salto de Bloque",
+                    content: `Se calcula el total de hosts con ${hostBits} bits de host.`,
+                    math: `\\text{Total Direcciones} = 2^{${hostBits}} = ${totalHostsPerSubnet} \\quad \\text{Hosts Usables} = ${usableHostsPerSubnet}`,
+                    details: `Tamaño del salto (Bloque): ${totalHostsPerSubnet} direcciones.`
+                });
+                
+                // Paso 4: Asignación de Subredes
+                steps.push({
+                    title: "Paso 4: Cálculo Binario de la Primera Subred",
+                    content: `Se realiza el *AND* lógico entre la IP original y la Nueva Máscara /${newCidr} para obtener el ID de Red.`,
+                    math: null,
+                    binary: {
+                        cidr: newCidr,
+                        startCidr: cidr,
+                        lines: [
+                            { label: "IP Base", value: initialIpInt, type: 'red' },
+                            { label: "Máscara", value: newMaskInt, type: 'mask', operation: '&' },
+                            { label: "ID de Red", value: networkStartInt, type: 'red' }
+                        ]
+                    }
+                });
+
+                // Iteración de Subredes
+                for (let i = 0; i < requiredSubnets; i++) {
+                    const networkInt = currentIpInt;
+                    const broadcastInt = networkInt + totalHostsPerSubnet - 1;
+
+                    const networkId = ipIntToDotDecimal(networkInt);
+                    const broadcastId = ipIntToDotDecimal(broadcastInt);
+                    const firstHost = ipIntToDotDecimal(networkInt + 1);
+                    const lastHost = ipIntToDotDecimal(broadcastInt - 1);
+
+
+                    subnets.push({
+                        name: `Subred ${i + 1}`,
+                        cidr: newCidr,
+                        mask: newMask,
+                        networkId: networkId,
+                        firstHost: firstHost,
+                        lastHost: lastHost,
+                        broadcastId: broadcastId,
+                        hostsUsable: usableHostsPerSubnet
+                    });
+                    
+                    // Avance al siguiente Network ID
+                    currentIpInt += totalHostsPerSubnet;
+                    
+                    // Detalle del paso por subred
+                    steps.push({
+                        title: `Subred ${i + 1}: Detalle de Direcciones`,
+                        content: `
+                            Red: ${networkId} (Salto de ${totalHostsPerSubnet} direcciones). 
+                            Máscara: ${newMask}.
+                            Rango de Hosts: ${firstHost} a ${lastHost}.
+                            Broadcast: ${broadcastId}.
+                        `,
+                        math: null
+                    });
+                }
+            } 
+            // =============================================================
+            // VLSM (Máscara de Subred Variable)
+            // =============================================================
+            else if (calculationType === 'vlsm') {
+                const requirements = Array.from(document.querySelectorAll('#host-requirements-list .vlsm-host-input'))
+                                        .map(input => parseInt(input.value, 10))
+                                        .filter(val => val > 0);
+
+                if (requirements.length === 0) {
+                    resultsDiv.innerHTML = `<p class="error-message">Para VLSM, debe ingresar al menos un requisito de Host.</p>`;
+                    saveInputState();
+                    return;
+                }
+
+                // Paso 2: Ordenamiento
+                const sortedRequirements = [...requirements].sort((a, b) => b - a);
+                steps.push({
+                    title: "Paso 2: Ordenamiento de Requerimientos de Hosts (VLSM)",
+                    content: `Requisitos de hosts ordenados de mayor a menor para el cálculo VLSM: ${sortedRequirements.join(', ')} hosts.`,
+                    math: null
+                });
+
+                // Paso 3: Iteración de Subredes
+                steps.push({
+                    title: "Paso 3: Cálculo y Asignación de Subredes (Iterativo)",
+                    content: `Se comienza desde la dirección de red inicial, determinando la máscara mínima (/CIDR) para satisfacer el requisito de hosts más grande.`,
+                    math: null
+                });
+
+                sortedRequirements.forEach((req, index) => {
+                    // Determinar 'n' bits de host
+                    let hostBits = 0;
+                    while (Math.pow(2, hostBits) - 2 < req && hostBits < 32) {
+                        hostBits++;
+                    }
+                    
+                    if (hostBits > 32 - cidr) { 
+                         steps.push({
+                            title: `Subred ${index + 1} (Req: ${req}) - ¡ERROR!`,
+                            content: `No es posible crear esta subred. Se necesitan ${hostBits} bits de host, pero el prefijo original /${cidr} solo permite ${32 - cidr} bits de host.`,
+                            math: null
+                        });
+                        return; // Saltar esta subred si es imposible
+                    }
+                    
+                    if (hostBits < 2) { 
+                         steps.push({
+                            title: `Subred ${index + 1} (Req: ${req}) - ¡ERROR!`,
+                            content: `Requisito de Hosts (${req}) es demasiado bajo. Se necesitan al menos 2 hosts usables, lo que requiere 2 bits de host (CIDR /30).`,
+                            math: null
+                        });
+                        return; // Saltar esta subred si es imposible
+                    }
+
+                    const totalHosts = Math.pow(2, hostBits);
+                    const usableHosts = totalHosts - 2;
+                    const newCidr = 32 - hostBits;
+                    const newMask = cidrToMask(newCidr);
+                    const newMaskInt = (0xFFFFFFFF << (32 - newCidr)) >>> 0;
+
+                    // Calcular Network ID a partir del currentIpInt
+                    const networkInt = currentIpInt;
+                    const broadcastInt = networkInt + totalHosts - 1;
+                    
+                    // Conversión a DOT decimal para la tabla
+                    const networkId = ipIntToDotDecimal(networkInt);
+                    const broadcastId = ipIntToDotDecimal(broadcastInt);
+                    const firstHost = ipIntToDotDecimal(networkInt + 1);
+                    const lastHost = ipIntToDotDecimal(broadcastInt - 1);
+
+
+                    subnets.push({
+                        name: `Subred ${index + 1} (Hosts: ${req})`,
+                        cidr: newCidr,
+                        mask: newMask,
+                        networkId: networkId,
+                        firstHost: firstHost,
+                        lastHost: lastHost,
+                        broadcastId: broadcastId,
+                        hostsUsable: usableHosts
+                    });
+
+                    // Avance al siguiente Network ID (salto de bloque)
+                    currentIpInt = broadcastInt + 1;
+
+                    // Detalle del paso por subred con binario
+                    steps.push({
+                        title: `Subred ${index + 1} (Requerimiento: ${req} hosts)`,
+                        content: `
+                            Cálculo: $2^n$ que contenga a ${req} hosts $\\rightarrow 2^{${hostBits}} - 2 = ${usableHosts}$.
+                            Nuevo CIDR: $/${newCidr}$. Máscara: ${newMask}.
+                        `,
+                        math: null,
+                        binary: {
+                            cidr: newCidr,
+                            startCidr: cidr,
+                            lines: [
+                                { label: "IP Red", value: networkInt, type: 'red' },
+                                { label: "Máscara", value: newMaskInt, type: 'mask', operation: '&' },
+                                { label: "ID Red", value: networkInt, type: 'red' },
+                                { label: "Broadcast", value: broadcastInt, type: 'broadcast' }
+                            ]
+                        }
+                    });
+                });
+            }
+
+            // =============================================================
+            // MOSTRAR RESULTADOS FINALES Y PASO A PASO
+            // =============================================================
+            printResults(subnets, resultsDiv);
+            displayStepByStep(steps, stepsDiv);
+            saveInputState();
+        }
+
+        /**
+         * Muestra los resultados finales en formato de tabla.
+         */
+        function printResults(subnets, targetElement) {
+            if (subnets.length === 0) {
+                 targetElement.innerHTML = `<p class="error-message">No se pudieron generar subredes o la entrada es inválida.</p>`;
+                 return;
+            }
+
+            let html = `
+                <h3 class="section-title">Resultados Finales del Subnetting</h3>
+                <div class="results-table-container">
+                    <table class="results-table">
+                        <thead>
+                            <tr>
+                                <th>Subred</th>
+                                <th>Máscara (/CIDR)</th>
+                                <th>ID de Red</th>
+                                <th>Primer Host</th>
+                                <th>Último Host</th>
+                                <th>ID de Broadcast</th>
+                                <th>Hosts Usables</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            subnets.forEach(subnet => {
+                html += `
+                    <tr>
+                        <td>${subnet.name}</td>
+                        <td>${subnet.mask} (/${subnet.cidr})</td>
+                        <td>${subnet.networkId}</td>
+                        <td>${subnet.firstHost}</td>
+                        <td>${subnet.lastHost}</td>
+                        <td>${subnet.broadcastId}</td>
+                        <td>${subnet.hostsUsable.toLocaleString('es-ES')}</td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            targetElement.innerHTML = html;
+        }
+
+        /**
+         * Muestra el proceso detallado de cálculo (Paso a Paso).
+         */
+        function displayStepByStep(steps, targetElement) {
+            if (steps.length === 0) return;
+
+            let html = `
+                <h3 class="section-title step-by-step-title">Paso a Paso del Cálculo</h3>
+                <div class="step-list">
+            `;
+
+            steps.forEach((step, index) => {
+                let binaryHtml = '';
+                if (step.binary) {
+                    const { lines, cidr, startCidr } = step.binary;
+                    binaryHtml += `<div class="binary-container">`;
+                    
+                    // Mostrar octetos decimales arriba
+                    binaryHtml += `<div class="binary-line">`;
+                    binaryHtml += `<span class="binary-label">Octeto:</span>`;
+                    for(let i=0; i<4; i++) {
+                        binaryHtml += `<span class="octet-decimal"> ${i+1} </span>`;
+                    }
+                    binaryHtml += `</div>`;
+
+                    lines.forEach(line => {
+                        const dotDecimal = ipIntToDotDecimal(line.value);
+                        
+                        binaryHtml += `<div class="binary-line">`;
+                        if (line.operation) {
+                             binaryHtml += `<span class="operation">${line.operation}</span>`;
+                        } else {
+                            binaryHtml += `<span class="binary-label">${line.label}:</span>`;
+                        }
+                        
+                        binaryHtml += formatBinaryStep(line.value, startCidr, cidr, line.type);
+                        binaryHtml += `<span class="binary-separator">=</span> <span class="binary-label">${dotDecimal}</span>`;
+                        binaryHtml += `</div>`;
+                    });
+
+                    binaryHtml += `</div>`;
+                }
+
+                html += `
+                    <div class="step-card">
+                        <div class="step-header">
+                            <span class="step-number">#${index + 1}</span>
+                            <h4 class="step-title">${step.title}</h4>
+                        </div>
+                        <div class="step-content">
+                            <p>${step.content}</p>
+                            ${step.details ? `<p class="step-details">${step.details}</p>` : ''}
+                            ${step.math ? `<div class="step-math">\$${step.math}\$</div>` : ''}
+                            ${binaryHtml}
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                </div>
+                <p class="final-note">El cálculo ha finalizado. Los resultados detallados se encuentran en la sección anterior.</p>
+            `;
+            targetElement.innerHTML = html;
+
+            // Re-renderizar MathJax después de insertar el nuevo contenido
+            if (window.MathJax) {
+                setTimeout(() => {
+                    window.MathJax.typesetPromise([targetElement]).catch(err => console.log('MathJax error during typesetting:', err));
+                }, 100); 
+            }
+        }
+
+        // ====================================================================
+        // MANEJO DE UI Y EVENTOS
+        // ====================================================================
+        
+        /**
+         * Alterna la visibilidad de los controles CLSM/VLSM.
+         */
+        function toggleCLSMInputs(isClsm) {
+            document.getElementById('clsm-controls').classList.toggle('hidden', !isClsm);
+            document.getElementById('vlsm-controls').classList.toggle('hidden', isClsm);
+        }
+
+        /**
+         * Añade un campo de input para requisitos VLSM.
+         * @param {string} initialValue Valor inicial para el input.
+         * @param {string} placeholderText Texto del placeholder.
+         */
+        function addHostInput(initialValue = '', placeholderText = '') {
+            const list = document.getElementById('host-requirements-list');
+            const count = list.querySelectorAll('.vlsm-host-input').length + 1;
+            const newGroup = document.createElement('div');
+            newGroup.classList.add('vlsm-input-group');
+            
+            // Si el texto del placeholder no viene de la carga, generar uno por defecto
+            if (!placeholderText) {
+                placeholderText = `Hosts para Subred ${count}`;
+            }
+
+            newGroup.innerHTML = `
+                <input type="number" class="vlsm-host-input" min="1" placeholder="${placeholderText}" value="${initialValue}" onchange="saveInputState()">
+                <button type="button" class="remove-host-btn" onclick="removeHostInput(this)">-</button>
+            `;
+            list.appendChild(newGroup);
+            saveInputState();
+        }
+
+        /**
+         * Elimina un campo de input para requisitos VLSM.
+         */
+        function removeHostInput(button) {
+            const group = button.closest('.vlsm-input-group');
+            const list = document.getElementById('host-requirements-list');
+            
+            // Cambiado de alert() a un mensaje en la UI
+            const msgElement = document.getElementById('vlsm-error-message');
+            msgElement.textContent = ''; 
+
+            if (list.children.length > 1) {
+                group.remove();
+                saveInputState();
+            } else {
+                msgElement.textContent = 'Debe haber al menos un requisito de Host.';
+                setTimeout(() => msgElement.textContent = '', 3000);
+            }
+        }
+
+        // ====================================================================
+        // INICIALIZACIÓN DE LA APLICACIÓN
+        // ====================================================================
+        document.addEventListener('DOMContentLoaded', () => {
+            // 1. Cargar el estado guardado desde localStorage
+            loadInputState();
+            
+            // 2. Si no había datos guardados, asegurar que CLSM esté activo y haya un input VLSM
+            const clsmRadio = document.getElementById('clsm');
+            if (!document.querySelector('input[name="calculation-type"]:checked')) {
+                 clsmRadio.checked = true;
+            }
+            if (document.getElementById('host-requirements-list').children.length === 0) {
+                 addHostInput('', `Hosts para Subred 1`);
+            }
+            toggleCLSMInputs(clsmRadio.checked);
+            
+            // 3. Calcular exponente inicial
+            calculateExponent();
+        });
+        
